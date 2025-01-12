@@ -1,0 +1,7 @@
+wallet: "wallet.json"
+password: ""
+rpc_endpoint: "http://localhost:30333"
+backend_key: "03b09baabff3f6107c7e9acb8721a6fc5618d45b50247a314d82e548702cce8cd5"
+nft_contract: "77a7c4e6f9307e5ce55136daa92ce5cb4621f8be"
+auction_contract: "29c1332ede5f2ac639fa2c72b9e29babf110faaf"
+backend_url: "http://localhost:5555"

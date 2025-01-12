@@ -1,0 +1,8 @@
+wallet: "../../frostfs-aio/wallets/wallet1.json"
+password: ""
+rpc_endpoint: "http://localhost:30333"
+rpc_endpoint_ws: "ws://localhost:30333/ws"
+nyan_contract: "77a7c4e6f9307e5ce55136daa92ce5cb4621f8be"
+storage_node: "localhost:8080"
+storage_container: "9ZKKKE24N9oLv9WQGevKMFudneLELtx2aZ8X9zrT2RWj"
+listen_address: ":5555"
