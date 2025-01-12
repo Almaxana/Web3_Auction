@@ -7,9 +7,6 @@ import (
 	"errors"
 	"fmt"
 
-	"git.frostfs.info/TrueCloudLab/frostfs-sdk-go/object"
-	"git.frostfs.info/TrueCloudLab/frostfs-sdk-go/pool"
-	"git.frostfs.info/TrueCloudLab/frostfs-sdk-go/user"
 	"github.com/nspcc-dev/neo-go/pkg/core/interop/interopnames"
 	"github.com/nspcc-dev/neo-go/pkg/neorpc/result"
 	"github.com/nspcc-dev/neo-go/pkg/network/payload"
@@ -37,24 +34,6 @@ func (s *Server) proceedMainTxStartAuction(ctx context.Context, nAct *notary.Act
 	if err != nil {
 		return fmt.Errorf("wait: %w", err)
 	}
-
-	var ownerID user.ID
-	user.IDFromKey(&ownerID, s.acc.PrivateKey().PrivateKey.PublicKey)
-
-	obj := object.New()
-	obj.SetContainerID(s.cnrID)
-	obj.SetOwnerID(ownerID)
-
-	var prm pool.PrmObjectPut
-	prm.SetHeader(*obj)
-
-	objID, err := s.p.PutObject(ctx, prm)
-	if err != nil {
-		return fmt.Errorf("put object '%s': %w", nftIdBytes, err)
-	}
-
-	addr := s.cnrID.EncodeToString() + "/" + objID.ObjectID.EncodeToString()
-	s.log.Info("put object", zap.String("nftId", string(nftIdBytes)), zap.String("address", addr))
 
 	return nil
 }
