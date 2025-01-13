@@ -335,7 +335,7 @@ func makeNotaryRequestFinishAuction(backendKey *keys.PublicKey, acc *wallet.Acco
 	return nil
 }
 
-var listOfCats = []string{
+/*var listOfCats = []string{
 	"404.gif",
 	"america.gif",
 	"balloon.gif",
@@ -396,11 +396,22 @@ var listOfCats = []string{
 	"xmas.gif",
 	"xmasold.gif",
 	"zombie.gif",
+}*/
+
+var ListOfEventsAndSeats = []struct {
+	Event string
+	Seat  string
+}{
+	{"Concert: Rock Night", "Section A, Row 1, Seat 5"},
+	{"Concert: Jazz Evening", "Section B, Row 3, Seat 12"},
+	{"Musical: Wicked", "Section C, Row 2, Seat 8"},
+	{"Cinema: Sci-Fi Marathon", "VIP Box, Seat 1"},
+	{"ITMO: dopsa", "VIP Box, Seat 1"},
 }
 
 func getFreeNyanCat(cli *rpcclient.Client, acc *wallet.Account, contractHash util.Uint160) (string, error) {
 	// пробегает по списку гифок, определяет свободна или нет, дергая ownerOf. Найдя первую свободную, возвращает
-	indexes := make([]uint64, len(listOfCats))
+	indexes := make([]uint64, len(ListOfEventsAndSeats))
 	for i := range indexes {
 		indexes[i] = uint64(i)
 	}
@@ -416,12 +427,12 @@ func getFreeNyanCat(cli *rpcclient.Client, acc *wallet.Account, contractHash uti
 	// идут с разных концов, используем рандеву-хэширование
 	hrw.Sort(indexes, h)
 
-	var cat string
+	var ticket string
 	for _, index := range indexes {
-		cat = listOfCats[index]
+		ticket = ListOfEventsAndSeats[index].Event + ListOfEventsAndSeats[index].Seat
 
 		hash := sha256.New()
-		hash.Write([]byte(cat))
+		hash.Write([]byte(ticket))
 		tokenID := hash.Sum(nil)
 
 		if _, err := unwrap.Uint160(act.Call(contractHash, "ownerOf", tokenID)); err != nil {
@@ -429,11 +440,11 @@ func getFreeNyanCat(cli *rpcclient.Client, acc *wallet.Account, contractHash uti
 		}
 	}
 
-	if cat == "" {
-		return "", errors.New("all cats are taken") // не осталось свободных токенов
+	if ticket == "" {
+		return "", errors.New("all tickets are taken") // не осталось свободных токенов
 	}
 
-	return cat, nil
+	return ticket, nil
 }
 
 func die(err error) {

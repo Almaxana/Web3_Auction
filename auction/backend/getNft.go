@@ -6,11 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"net/http"
-
-	"git.frostfs.info/TrueCloudLab/frostfs-sdk-go/object"
-	"git.frostfs.info/TrueCloudLab/frostfs-sdk-go/pool"
-	"git.frostfs.info/TrueCloudLab/frostfs-sdk-go/user"
 	"github.com/nspcc-dev/neo-go/pkg/core/interop/interopnames"
 	"github.com/nspcc-dev/neo-go/pkg/neorpc/result"
 	"github.com/nspcc-dev/neo-go/pkg/network/payload"
@@ -116,43 +111,10 @@ func (s *Server) proceedMainTxGetNft(ctx context.Context, nAct *notary.Actor, no
 		return fmt.Errorf("wait: %w", err)
 	}
 
-	url := "https://www.nyan.cat/cats/" + tokenName
-
-	resp, err := http.Get(url)
+	// Добавление билета в контракт
+	_, err = s.act.Wait(s.act.SendCall(s.nyanHash, "mint", nil, nil, tokenName))
 	if err != nil {
-		return fmt.Errorf("get url '%s' : %w", url, err)
+		return fmt.Errorf("wait mint: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			s.log.Error("close response bode", zap.Error(err))
-		}
-	}()
-
-	var ownerID user.ID
-	user.IDFromKey(&ownerID, s.acc.PrivateKey().PrivateKey.PublicKey)
-
-	obj := object.New()
-	obj.SetContainerID(s.cnrID)
-	obj.SetOwnerID(ownerID)
-
-	var prm pool.PrmObjectPut
-	prm.SetPayload(resp.Body)
-	prm.SetHeader(*obj)
-
-	objID, err := s.p.PutObject(ctx, prm)
-	if err != nil {
-		return fmt.Errorf("put object '%s': %w", url, err)
-	}
-
-	addr := s.cnrID.EncodeToString() + "/" + objID.ObjectID.EncodeToString()
-	s.log.Info("put object", zap.String("url", url), zap.String("address", addr))
-
-	_, err = s.act.Wait(s.act.SendCall(s.nyanHash, "setAddress", tokenName, addr)) // добавляем адрес токену. После того, как произошел mint, заполнены у нового
-	// nft будут поля, кроме address. Он будет добавляться отдельно здесь, после того, как токен создался.
-	// Потому что пользователь должен знать, какую nft он хочет выписать
-	if err != nil {
-		return fmt.Errorf("wait setAddress: %w", err)
-	}
-
 	return nil
 }
