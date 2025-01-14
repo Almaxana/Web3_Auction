@@ -91,6 +91,55 @@ func main() {
 	default:
 		// log.Printf("Unknown commandName: %s", commandName)
 		fmt.Printf("Unknown commandName: %s\n", commandName)
+
+	case "getPotentialWinner":
+		winner, err := getPotentialWinner(rpcCli, auctionContractHash)
+		if err != nil {
+			fmt.Printf("Error getting potential winner: %v\n", err)
+			return
+		}
+	
+		fmt.Printf("Current potential winner: %s\n", winner.String())
+	
+
+	case "makeBet":
+		betStr := os.Args[3]
+		bet, err := strconv.Atoi(betStr)
+		if err != nil {
+			fmt.Printf("Error converting bet number to integer: %v\n", err)
+			return
+		}
+		
+		notaryReq, err := rpcCli.GetP2PNotaryRequest(acc.ScriptHash()) // Получаем нотариальный запрос
+		if err != nil {
+			fmt.Printf("Error fetching notary request: %v\n", err)
+			return
+		}
+
+		// die(makeNotaryRequestMakeBet(backendKey, acc, rpcCli, auctionContractHash, bet))
+
+		better, validatedBet, err := validateNotaryRequestMakeBet(notaryReq)
+		if err != nil {
+			fmt.Printf("Error validating notary request: %v\n", err)
+			return
+		}
+
+		if validatedBet != bet {
+			fmt.Printf("Bet mismatch: expected %d, got %d\n", bet, validatedBet)
+			return
+		}
+
+		//better, bet, err := validateNotaryRequestMakeBet(notaryEvent)
+		//if err != nil {
+		//	s.log.Error("invalid notary request for makeBet", zap.Error(err))
+		//	return
+		//}
+
+		err = s.proceedMainTxMakeBet(ctx, nAct, notaryReq, better, bet)
+		if err != nil {
+			fmt.Printf("Error proceeding makeBet transaction: %v\n", err)
+			return
+		}
 	}
 
 }
@@ -250,8 +299,7 @@ func makeNotaryRequestMakeBet(backendKey *keys.PublicKey, acc *wallet.Account, r
 		return err
 	}
 
-	tx, err := nAct.MakeTunedCall(contractHash, "makeBet", nil, nil, acc.ScriptHash(), bet) // tx = вызов метода makeBet на
-	// контракте ayction
+	tx, err := nAct.MakeTunedCall(contractHash, "makeBet", nil, nil, acc.ScriptHash(), bet) // tx = вызов метода makeBet на контракте auction
 	if err != nil {
 		return err
 	}
@@ -276,10 +324,10 @@ func makeNotaryRequestMakeBet(backendKey *keys.PublicKey, acc *wallet.Account, r
 		return fmt.Errorf("invalid stack size: %d", len(res.Stack))
 	}
 
-	fmt.Println("bet accepted")
-
+	fmt.Println("Bet accepted successfully")
 	return nil
 }
+
 
 func makeNotaryRequestFinishAuction(backendKey *keys.PublicKey, acc *wallet.Account, rpcCli *rpcclient.Client, contractHash util.Uint160) error {
 	coSigners := []actor.SignerAccount{
