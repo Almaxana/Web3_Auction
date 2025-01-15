@@ -76,20 +76,20 @@ func ShowLotId() string {
 }
 
 func FinishAuction() (winner interop.Hash160, lastBet int) {
-	if !runtime.CheckWitness(winner) {
-		panic("Invalid witness")
+	if !runtime.CheckWitness(runtime.GetScriptContainer().Sender) {
+		panic("not witnessed")
 	}
 
 	ctx := storage.GetReadOnlyContext()
 
 	winner, ok := storage.Get(ctx, potentialWinnerKey).(interop.Hash160)
 	if !ok {
-		panic("Failed to retrieve winner")
+		panic("FinishAuction get the winner")
 	}
 
 	lastBet, ok = storage.Get(ctx, currentBetKey).(int)
 	if !ok {
-		panic("Failed to retrieve the last bet")
+		panic("FinishAuction get the bet")
 	}
 
 	clearStorage()
@@ -97,6 +97,8 @@ func FinishAuction() (winner interop.Hash160, lastBet int) {
 	return
 }
 
+// clearStorage
+// in this moment this func delete all values storage by hardcode prefix
 func clearStorage() {
 	ctx := storage.GetContext()
 
