@@ -6,8 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"net/http"
-
 	"git.frostfs.info/TrueCloudLab/frostfs-sdk-go/object"
 	"git.frostfs.info/TrueCloudLab/frostfs-sdk-go/pool"
 	"git.frostfs.info/TrueCloudLab/frostfs-sdk-go/user"
@@ -20,6 +18,7 @@ import (
 	"github.com/nspcc-dev/neo-go/pkg/vm"
 	"github.com/nspcc-dev/neo-go/pkg/vm/opcode"
 	"go.uber.org/zap"
+	"net/http"
 )
 
 func validateNotaryRequestGetNft(req *payload.P2PNotaryRequest) (util.Uint160, string, error) {
@@ -116,7 +115,7 @@ func (s *Server) proceedMainTxGetNft(ctx context.Context, nAct *notary.Actor, no
 		return fmt.Errorf("wait: %w", err)
 	}
 
-	url := "https://www.nyan.cat/cats/" + tokenName
+	url := "https://678b8b8a1a6b89b27a2aaf17.mockapi.io/jsonticket/tickets/ticket/" + tokenName
 
 	resp, err := http.Get(url)
 	if err != nil {
