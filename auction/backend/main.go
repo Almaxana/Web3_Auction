@@ -50,7 +50,7 @@ const (
 	cfgRPCEndpointWS    = "rpc_endpoint_ws"
 	cfgWallet           = "wallet"
 	cfgPassword         = "password"
-	cfgNyanContract     = "nyan_contract"
+	cfgTicketContract   = "ticket_contract"
 	cfgStorageNode      = "storage_node"
 	cfgStorageContainer = "storage_container"
 	cfgListenAddress    = "listen_address"
@@ -117,7 +117,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 		return nil, err
 	}
 
-	contractNyanHash, err := util.Uint160DecodeStringLE(viper.GetString(cfgNyanContract))
+	contractNyanHash, err := util.Uint160DecodeStringLE(viper.GetString(cfgTicketContract))
 	if err != nil {
 		return nil, err
 	}

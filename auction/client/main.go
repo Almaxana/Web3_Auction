@@ -127,7 +127,7 @@ func makeNotaryRequestGetNft(backendKey *keys.PublicKey, acc *wallet.Account, rp
 		},
 	}
 
-	nyanCat, err := getFreeNyanCat(rpcCli, acc, contractHash) // находит свободную гифку
+	nyanCat, err := getFreeTicket(rpcCli, acc, contractHash) // находит свободную гифку
 	if err != nil {
 		return fmt.Errorf("get free cat: %w", err)
 	}
@@ -335,83 +335,13 @@ func makeNotaryRequestFinishAuction(backendKey *keys.PublicKey, acc *wallet.Acco
 	return nil
 }
 
-/*var listOfCats = []string{
-	"404.gif",
-	"america.gif",
-	"balloon.gif",
-	"bday.gif",
-	"bloon.gif",
-	"breakfast.gif",
-	"daft.gif",
-	"dub.gif",
-	"easter.gif",
-	"elevator.gif",
-	"fat.gif",
-	"fiesta.gif",
-	"floppy.gif",
-	"ganja.gif",
-	"gb.gif",
-	"grumpy.gif",
-	"j5.gif",
-	"jacksnyan.gif",
-	"jamaicnyan.gif",
-	"jazz.gif",
-	"jazzcat.gif",
-	"manyan.gif",
-	"melon.gif",
-	"mexinyan.gif",
-	"mummy.gif",
-	"newyear.gif",
-	"nyanamerica.gif",
-	"nyancat.gif",
-	"nyancoin.gif",
-	"nyandoge.gif",
-	"nyaninja.gif",
-	"nyanvirus.gif",
-	"oldnewyear.gif",
-	"oldnyan.gif",
-	"original.gif",
-	"paddy.gif",
-	"pikanyan.gif",
-	"pirate.gif",
-	"pumpkin.gif",
-	"rasta.gif",
-	"retro.gif",
-	"sad.gif",
-	"sadnyan.gif",
-	"skrillex.gif",
-	"slomo.gif",
-	"slomocat.gif",
-	"smooth.gif",
-	"smurfcat.gif",
-	"star.gif",
-	"starsheep.gif",
-	"tacnayn.gif",
-	"tacodog.gif",
-	"technyancolor.gif",
-	"toaster.gif",
-	"vday.gif",
-	"watermelon.gif",
-	"wtf.gif",
-	"xmas.gif",
-	"xmasold.gif",
-	"zombie.gif",
-}*/
-
-var ListOfEventsAndSeats = []struct {
-	Event string
-	Seat  string
-}{
-	{"Concert: Rock Night", "Section A, Row 1, Seat 5"},
-	{"Concert: Jazz Evening", "Section B, Row 3, Seat 12"},
-	{"Musical: Wicked", "Section C, Row 2, Seat 8"},
-	{"Cinema: Sci-Fi Marathon", "VIP Box, Seat 1"},
-	{"ITMO: dopsa", "VIP Box, Seat 1"},
-}
-
-func getFreeNyanCat(cli *rpcclient.Client, acc *wallet.Account, contractHash util.Uint160) (string, error) {
+func getFreeTicket(cli *rpcclient.Client, acc *wallet.Account, contractHash util.Uint160) (string, error) {
+	listOfTickets := make([]int, 100)
+	for i := range listOfTickets {
+		listOfTickets[i] = i + 1
+	}
 	// пробегает по списку гифок, определяет свободна или нет, дергая ownerOf. Найдя первую свободную, возвращает
-	indexes := make([]uint64, len(ListOfEventsAndSeats))
+	indexes := make([]uint64, len(listOfTickets))
 	for i := range indexes {
 		indexes[i] = uint64(i)
 	}
@@ -427,12 +357,12 @@ func getFreeNyanCat(cli *rpcclient.Client, acc *wallet.Account, contractHash uti
 	// идут с разных концов, используем рандеву-хэширование
 	hrw.Sort(indexes, h)
 
-	var ticket string
+	var freeTicket int = -1
 	for _, index := range indexes {
-		ticket = ListOfEventsAndSeats[index].Event + ListOfEventsAndSeats[index].Seat
+		freeTicket = listOfTickets[index]
 
 		hash := sha256.New()
-		hash.Write([]byte(ticket))
+		hash.Write([]byte(strconv.Itoa(freeTicket)))
 		tokenID := hash.Sum(nil)
 
 		if _, err := unwrap.Uint160(act.Call(contractHash, "ownerOf", tokenID)); err != nil {
@@ -440,11 +370,11 @@ func getFreeNyanCat(cli *rpcclient.Client, acc *wallet.Account, contractHash uti
 		}
 	}
 
-	if ticket == "" {
-		return "", errors.New("all tickets are taken") // не осталось свободных токенов
+	if freeTicket == -1 {
+		return strconv.Itoa(-1), errors.New("all numbers are taken") // Не осталось свободных токенов
 	}
 
-	return ticket, nil
+	return strconv.Itoa(freeTicket), nil
 }
 
 func die(err error) {
