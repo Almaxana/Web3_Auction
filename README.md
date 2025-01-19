@@ -24,7 +24,8 @@ password: ""
 rpc-endpoint: localhost:8080
 
 3) docker cp user-cli-cfg.yaml aio:/config/user-cli-cfg.yaml
-4) docker exec aio frostfs-cli -c /config/user-cli-cfg.yaml ape-manager add --chain-id nyan --rule 'Allow Object.* *' --target-type container --target-name <CID полученный предыдущей командой>
+4) docker exec aio frostfs-cli container create -c /config/user-cli-cfg.yaml --policy 'REP 1' --await
+5) docker exec aio frostfs-cli -c /config/user-cli-cfg.yaml ape-manager add --chain-id nyan --rule 'Allow Object.* *' --target-type container --target-name <CID полученный предыдущей командой>
 ````
 ❗️в `backend/config.yaml` в `storage_container` указываем полученный CID
 
