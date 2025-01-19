@@ -303,7 +303,7 @@ func (s *Server) runNotaryValidator(ctx context.Context) { // слушатель
 
 			switch notaryEvent.Type {
 			case mempoolevent.TransactionAdded:
-				tokenName, _, _, _, err := s.parseNotaryEvent(notaryEvent)
+				tokenName, _, _, err := s.parseNotaryEvent(notaryEvent)
 				if err != nil {
 					s.log.Error("parse notary event", zap.Error(err))
 					continue
@@ -339,25 +339,25 @@ func (s *Server) runNotaryValidator(ctx context.Context) { // слушатель
 	}
 }
 
-func (s *Server) parseNotaryEvent(notaryEvent *result.NotaryRequestEvent) (string, []byte, int, int, error) {
+func (s *Server) parseNotaryEvent(notaryEvent *result.NotaryRequestEvent) (string, []byte, int, error) {
 	if len(notaryEvent.NotaryRequest.MainTransaction.Signers) != 3 { // подписанты:  1 - backend , который за все платит, 2 - client, который принимает на свой счет nft,
 		// 3 - нотариальный контракт сам по себе, чья подпись необходима, чтобы  нотариальный запрос состоялся
-		return "", nil, 0, 0, errors.New("error not enough signers")
+		return "", nil, 0, errors.New("error not enough signers")
 	}
 
 	if notaryEvent.NotaryRequest.Witness.ScriptHash().Equals(s.acc.ScriptHash()) {
-		return "", nil, 0, 0, fmt.Errorf("ignore owned notary request: %s", notaryEvent.NotaryRequest.Hash().String())
+		return "", nil, 0, fmt.Errorf("ignore owned notary request: %s", notaryEvent.NotaryRequest.Hash().String())
 	}
 
-	_, tokenName, nftIdBytes, initBet, auctionDurationSeconds, err := validateNotaryRequest(notaryEvent.NotaryRequest, s)
+	_, tokenName, nftIdBytes, initBet, err := validateNotaryRequest(notaryEvent.NotaryRequest, s)
 	if err != nil {
-		return "", nil, 0, 0, err
+		return "", nil, 0, err
 	}
 
-	return tokenName, nftIdBytes, initBet, auctionDurationSeconds, err
+	return tokenName, nftIdBytes, initBet, err
 }
 
-func validateNotaryRequest(req *payload.P2PNotaryRequest, s *Server) (util.Uint160, string, []byte, int, int, error) {
+func validateNotaryRequest(req *payload.P2PNotaryRequest, s *Server) (util.Uint160, string, []byte, int, error) {
 	var (
 		opCode opcode.Opcode // мб = PUSH, CALL, RET и тп
 		param  []byte        // параметры инструкции
@@ -370,7 +370,7 @@ func validateNotaryRequest(req *payload.P2PNotaryRequest, s *Server) (util.Uint1
 	for {
 		opCode, param, err = ctx.Next()
 		if err != nil {
-			return util.Uint160{}, "", nil, 0, 0, fmt.Errorf("could not get next opcode in script: %w", err)
+			return util.Uint160{}, "", nil, 0, fmt.Errorf("could not get next opcode in script: %w", err)
 		}
 
 		if opCode == opcode.RET {
@@ -385,11 +385,10 @@ func validateNotaryRequest(req *payload.P2PNotaryRequest, s *Server) (util.Uint1
 	contractMethod := string(ops[opsLen-3].param) // название метода - 3я с конца инструкция
 	currentOperation = contractMethod
 	var (
-		sh                     util.Uint160
-		tokenName              string
-		nftIdBytes             []byte
-		bet                    int
-		auctionDurationSeconds int
+		sh         util.Uint160
+		tokenName  string
+		nftIdBytes []byte
+		bet        int
 	)
 
 	switch contractMethod {
@@ -401,7 +400,7 @@ func validateNotaryRequest(req *payload.P2PNotaryRequest, s *Server) (util.Uint1
 		fmt.Printf("Unknown contractMethod: %s\n", contractMethod)
 	}
 
-	return sh, tokenName, nftIdBytes, bet, auctionDurationSeconds, err
+	return sh, tokenName, nftIdBytes, bet, err
 }
 
 func validateNotaryRequestPreProcessing(req *payload.P2PNotaryRequest) ([]Op, util.Uint160, error) {
