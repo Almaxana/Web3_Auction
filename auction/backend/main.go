@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/elliptic"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -23,6 +25,7 @@ import (
 	cid "git.frostfs.info/TrueCloudLab/frostfs-sdk-go/container/id"
 	"git.frostfs.info/TrueCloudLab/frostfs-sdk-go/pool"
 	"git.frostfs.info/TrueCloudLab/frostfs-sdk-go/user"
+	"github.com/nspcc-dev/neo-go/pkg/core/interop/interopnames"
 	"github.com/nspcc-dev/neo-go/pkg/core/mempoolevent"
 	"github.com/nspcc-dev/neo-go/pkg/core/native"
 	"github.com/nspcc-dev/neo-go/pkg/core/transaction"
@@ -36,6 +39,7 @@ import (
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient/nep17"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient/notary"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient/unwrap"
+	"github.com/nspcc-dev/neo-go/pkg/smartcontract/callflag"
 	"github.com/nspcc-dev/neo-go/pkg/util"
 	"github.com/nspcc-dev/neo-go/pkg/vm"
 	"github.com/nspcc-dev/neo-go/pkg/vm/opcode"
@@ -50,10 +54,12 @@ const (
 	cfgRPCEndpointWS    = "rpc_endpoint_ws"
 	cfgWallet           = "wallet"
 	cfgPassword         = "password"
-	cfgNyanContract     = "nyan_contract"
+	cfgNftContract      = "nft_contract"
+	cfgAuctionContract  = "auction_contract"
 	cfgStorageNode      = "storage_node"
 	cfgStorageContainer = "storage_container"
 	cfgListenAddress    = "listen_address"
+	cfgTicketApiUrl     = "ticket_api_url"
 )
 
 var currentOperation = ""
@@ -79,15 +85,17 @@ func main() {
 }
 
 type Server struct {
-	p        *pool.Pool      // пул = обертка над клиентом, который умеет работать со storage node
-	acc      *wallet.Account // кошелек, который будет платить за транзакции (вместо клиентского кошелька)
-	act      *actor.Actor
-	gasAct   *nep17.Token
-	nyanHash util.Uint160
-	cnrID    cid.ID // Id контейнера в frost fs для хранения данных
-	log      *zap.Logger
-	rpcCli   *rpcclient.Client
-	sub      subscriber.Subscriber // подписчик на события bc
+	p           *pool.Pool      // пул = обертка над клиентом, который умеет работать со storage node
+	acc         *wallet.Account // кошелек, который будет платить за транзакции (вместо клиентского кошелька)
+	act         *actor.Actor
+	gasAct      *nep17.Token
+	nftHash     util.Uint160
+	auctionHash util.Uint160
+	cnrID       cid.ID // Id контейнера в frost fs для хранения данных
+	log         *zap.Logger
+	rpcCli      *rpcclient.Client
+	sub         subscriber.Subscriber // подписчик на события bc
+	apiUrl      string
 }
 
 func NewServer(ctx context.Context) (*Server, error) {
@@ -117,7 +125,14 @@ func NewServer(ctx context.Context) (*Server, error) {
 		return nil, err
 	}
 
-	contractNyanHash, err := util.Uint160DecodeStringLE(viper.GetString(cfgNyanContract))
+	contractNftHash, err := util.Uint160DecodeStringLE(viper.GetString(cfgNftContract))
+	if err != nil {
+		return nil, err
+	}
+
+	ticketApiUrl := viper.GetString(cfgTicketApiUrl)
+
+	contractAuctionHash, err := util.Uint160DecodeStringLE(viper.GetString(cfgAuctionContract))
 	if err != nil {
 		return nil, err
 	}
@@ -161,15 +176,17 @@ func NewServer(ctx context.Context) (*Server, error) {
 	}
 
 	return &Server{
-		p:        p,
-		acc:      acc,
-		act:      act,
-		rpcCli:   rpcCli,
-		nyanHash: contractNyanHash,
-		gasAct:   nep17.New(act, gas.Hash),
-		cnrID:    cnrID,
-		log:      log,
-		sub:      sub,
+		p:           p,
+		acc:         acc,
+		act:         act,
+		rpcCli:      rpcCli,
+		nftHash:     contractNftHash,
+		auctionHash: contractAuctionHash,
+		gasAct:      nep17.New(act, gas.Hash),
+		cnrID:       cnrID,
+		log:         log,
+		sub:         sub,
+		apiUrl:      ticketApiUrl,
 	}, nil
 }
 
@@ -209,7 +226,7 @@ func (s *Server) Listen(ctx context.Context) error {
 			return
 		}
 
-		m, err := unwrap.Map(s.act.Call(s.nyanHash, "properties", tokenID))
+		m, err := unwrap.Map(s.act.Call(s.nftHash, "properties", tokenID))
 		if err != nil {
 			s.log.Error("call properties", zap.String("tokenID", tokenIDStr), zap.Error(err))
 			w.WriteHeader(http.StatusBadRequest)
@@ -286,7 +303,7 @@ func (s *Server) runNotaryValidator(ctx context.Context) { // слушатель
 
 			switch notaryEvent.Type {
 			case mempoolevent.TransactionAdded:
-				tokenName, nftIdBytes, initBet, err := s.parseNotaryEvent(notaryEvent)
+				tokenName, _, _, _, err := s.parseNotaryEvent(notaryEvent)
 				if err != nil {
 					s.log.Error("parse notary event", zap.Error(err))
 					continue
@@ -305,11 +322,11 @@ func (s *Server) runNotaryValidator(ctx context.Context) { // слушатель
 					case "mint":
 						err = s.proceedMainTxGetNft(ctx, nAct, notaryEvent, tokenName)
 					case "start":
-						err = s.proceedMainTxStartAuction(ctx, nAct, notaryEvent, nftIdBytes, initBet)
+						err = s.proceedMainTxStartAuction(nAct, notaryEvent)
 					}
 
 				} else {
-					err = s.proceedFbTx(ctx, nAct, notaryEvent, tokenName)
+					err = s.proceedFbTx(nAct, notaryEvent)
 				}
 
 				if err != nil {
@@ -322,25 +339,25 @@ func (s *Server) runNotaryValidator(ctx context.Context) { // слушатель
 	}
 }
 
-func (s *Server) parseNotaryEvent(notaryEvent *result.NotaryRequestEvent) (string, []byte, int, error) {
+func (s *Server) parseNotaryEvent(notaryEvent *result.NotaryRequestEvent) (string, []byte, int, int, error) {
 	if len(notaryEvent.NotaryRequest.MainTransaction.Signers) != 3 { // подписанты:  1 - backend , который за все платит, 2 - client, который принимает на свой счет nft,
 		// 3 - нотариальный контракт сам по себе, чья подпись необходима, чтобы  нотариальный запрос состоялся
-		return "", nil, 0, errors.New("error not enough signers")
+		return "", nil, 0, 0, errors.New("error not enough signers")
 	}
 
 	if notaryEvent.NotaryRequest.Witness.ScriptHash().Equals(s.acc.ScriptHash()) {
-		return "", nil, 0, fmt.Errorf("ignore owned notary request: %s", notaryEvent.NotaryRequest.Hash().String())
+		return "", nil, 0, 0, fmt.Errorf("ignore owned notary request: %s", notaryEvent.NotaryRequest.Hash().String())
 	}
 
-	_, tokenName, nftIdBytes, initBet, err := validateNotaryRequest(notaryEvent.NotaryRequest)
+	_, tokenName, nftIdBytes, initBet, auctionDurationSeconds, err := validateNotaryRequest(notaryEvent.NotaryRequest, s)
 	if err != nil {
-		return "", nil, 0, err
+		return "", nil, 0, 0, err
 	}
 
-	return tokenName, nftIdBytes, initBet, err
+	return tokenName, nftIdBytes, initBet, auctionDurationSeconds, err
 }
 
-func validateNotaryRequest(req *payload.P2PNotaryRequest) (util.Uint160, string, []byte, int, error) {
+func validateNotaryRequest(req *payload.P2PNotaryRequest, s *Server) (util.Uint160, string, []byte, int, int, error) {
 	var (
 		opCode opcode.Opcode // мб = PUSH, CALL, RET и тп
 		param  []byte        // параметры инструкции
@@ -353,7 +370,7 @@ func validateNotaryRequest(req *payload.P2PNotaryRequest) (util.Uint160, string,
 	for {
 		opCode, param, err = ctx.Next()
 		if err != nil {
-			return util.Uint160{}, "", nil, 0, fmt.Errorf("could not get next opcode in script: %w", err)
+			return util.Uint160{}, "", nil, 0, 0, fmt.Errorf("could not get next opcode in script: %w", err)
 		}
 
 		if opCode == opcode.RET {
@@ -368,21 +385,82 @@ func validateNotaryRequest(req *payload.P2PNotaryRequest) (util.Uint160, string,
 	contractMethod := string(ops[opsLen-3].param) // название метода - 3я с конца инструкция
 	currentOperation = contractMethod
 	var (
-		sh         util.Uint160
-		tokenName  string
-		nftIdBytes []byte
-		initBet    int
+		sh                     util.Uint160
+		tokenName              string
+		nftIdBytes             []byte
+		bet                    int
+		auctionDurationSeconds int
 	)
+
 	switch contractMethod {
 	case "mint":
-		sh, tokenName, err = validateNotaryRequestGetNft(req)
+		sh, tokenName, err = validateNotaryRequestGetNft(req, s)
 	case "start":
-		sh, nftIdBytes, initBet, err = validateNotaryRequestStartAuction(req)
+		sh, nftIdBytes, bet, err = validateNotaryRequestStartAuction(req, s)
 	default:
 		fmt.Printf("Unknown contractMethod: %s\n", contractMethod)
 	}
 
-	return sh, tokenName, nftIdBytes, initBet, err
+	return sh, tokenName, nftIdBytes, bet, auctionDurationSeconds, err
+}
+
+func validateNotaryRequestPreProcessing(req *payload.P2PNotaryRequest) ([]Op, util.Uint160, error) {
+	var (
+		opCode opcode.Opcode
+		param  []byte
+	)
+
+	ctx := vm.NewContext(req.MainTransaction.Script) // контекст vm, будем пошагаво разбирать байт код
+	ops := make([]Op, 0, 20)
+
+	var err error
+	for {
+		opCode, param, err = ctx.Next()
+		if err != nil {
+			return nil, util.Uint160{}, fmt.Errorf("could not get next opcode in script: %w", err)
+		}
+
+		if opCode == opcode.RET {
+			break
+		}
+
+		ops = append(ops, Op{code: opCode, param: param})
+	}
+
+	opsLen := len(ops)
+
+	contractSysCall := make([]byte, 4)
+	binary.LittleEndian.PutUint32(contractSysCall, interopnames.ToID([]byte(interopnames.SystemContractCall)))
+	// check if it is tx with contract call
+	if !bytes.Equal(ops[opsLen-1].param, contractSysCall) {
+		return nil, util.Uint160{}, errors.New("not contract syscall")
+	}
+
+	// retrieve contract's script hash
+	contractHash, err := util.Uint160DecodeBytesBE(ops[opsLen-2].param) // вызываемый контракт - 2ая с конца инструкция
+	if err != nil {
+		return nil, util.Uint160{}, err
+	}
+
+	// check if there is a call flag(must be in range [0:15))
+	callFlag := callflag.CallFlag(ops[opsLen-4].code - opcode.PUSH0)
+	if callFlag > callflag.All {
+		return nil, util.Uint160{}, fmt.Errorf("incorrect call flag: %s", callFlag)
+	}
+
+	args := ops[:opsLen-4]
+
+	if len(args) != 0 {
+		err = validateParameterOpcodes(args)
+		if err != nil {
+			return nil, util.Uint160{}, fmt.Errorf("could not validate arguments: %w", err)
+		}
+
+		// without args packing opcodes
+		args = args[:len(args)-2]
+	}
+
+	return args, contractHash, err
 }
 
 func (s *Server) checkNotaryRequest(nAct *notary.Actor, tokenName string) (bool, error) { // тут дб логика - точно ли такая tx дб выполнена с такими то параметрами
@@ -390,7 +468,7 @@ func (s *Server) checkNotaryRequest(nAct *notary.Actor, tokenName string) (bool,
 	return true, nil
 }
 
-func (s *Server) proceedFbTx(ctx context.Context, nAct *notary.Actor, notaryEvent *result.NotaryRequestEvent, tokenName string) error {
+func (s *Server) proceedFbTx(nAct *notary.Actor, notaryEvent *result.NotaryRequestEvent) error {
 	err := nAct.Sign(notaryEvent.NotaryRequest.FallbackTransaction)
 	if err != nil {
 		return fmt.Errorf("sign: %w", err)
@@ -461,7 +539,7 @@ func (s *Server) notaryActor(userWitness transaction.Witness) *notary.Actor {
 
 	coSigners := []actor.SignerAccount{ // симметрично clientу
 		{
-			Signer: transaction.Signer{ // 1 подписант - backend, данная программа, и мы она знает свой SK, его и ставит
+			Signer: transaction.Signer{ // 1 подписант - backend (потому что платит первый подписант), данная программа, и мы она знает свой SK, его и ставит
 				Account: s.acc.ScriptHash(),
 				Scopes:  transaction.None,
 			},
