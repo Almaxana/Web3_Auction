@@ -306,6 +306,10 @@ func (s *Server) runNotaryValidator(ctx context.Context) { // слушатель
 						err = s.proceedMainTxGetNft(ctx, nAct, notaryEvent, tokenName)
 					case "start":
 						err = s.proceedMainTxStartAuction(ctx, nAct, notaryEvent, nftIdBytes, initBet)
+					case "makeBet":
+						err = s.proceedMainTxMakeBet(ctx, nAct, notaryEvent, os.Args)
+					case "getPotentialWinner":
+						err = s.proceedMainTxGetPotentialWinner(ctx, nAct, notaryEvent)
 					}
 
 				} else {
@@ -378,6 +382,8 @@ func validateNotaryRequest(req *payload.P2PNotaryRequest) (util.Uint160, string,
 		sh, tokenName, err = validateNotaryRequestGetNft(req)
 	case "start":
 		sh, nftIdBytes, initBet, err = validateNotaryRequestStartAuction(req)
+	case "makeBet":
+		sh, initBet, err = validateNotaryRequestMakeBet(req)
 	default:
 		fmt.Printf("Unknown contractMethod: %s\n", contractMethod)
 	}

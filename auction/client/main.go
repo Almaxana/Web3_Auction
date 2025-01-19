@@ -16,6 +16,7 @@ import (
 	"git.frostfs.info/TrueCloudLab/hrw"
 	"github.com/nspcc-dev/neo-go/pkg/core/transaction"
 	"github.com/nspcc-dev/neo-go/pkg/crypto/keys"
+	"github.com/nspcc-dev/neo-go/pkg/encoding/address"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient/actor"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient/notary"
@@ -85,22 +86,17 @@ func main() {
 	// case "makeBet":
 	// 	die(makeNotaryRequestMakeBet(backendKey, acc, rpcCli, auctionContractHash)) // создание НЗ (оборачивает main tx, которая состоит в вызове метода контракта)
 	// case "finishAuction":
+
 	// 	die(makeNotaryRequestFinishAuction(backendKey, acc, rpcCli, auctionContractHash)) // создание НЗ (оборачивает main tx, которая состоит в вызове метода контракта)
 	case "getNFT":
 		die(makeNotaryRequestGetNft(backendKey, acc, rpcCli, nftContractHash)) // создание НЗ (оборачивает main tx, которая состоит в вызове метода контракта)
+
 	default:
 		// log.Printf("Unknown commandName: %s", commandName)
 		fmt.Printf("Unknown commandName: %s\n", commandName)
 
 	case "getPotentialWinner":
-		winner, err := getPotentialWinner(rpcCli, auctionContractHash)
-		if err != nil {
-			fmt.Printf("Error getting potential winner: %v\n", err)
-			return
-		}
-	
-		fmt.Printf("Current potential winner: %s\n", winner.String())
-	
+		die(makeNotaryRequestGetPotentialWinner(backendKey, acc, rpcCli, auctionContractHash))
 
 	case "makeBet":
 		betStr := os.Args[3]
@@ -109,37 +105,8 @@ func main() {
 			fmt.Printf("Error converting bet number to integer: %v\n", err)
 			return
 		}
-		
-		notaryReq, err := rpcCli.GetP2PNotaryRequest(acc.ScriptHash()) // Получаем нотариальный запрос
-		if err != nil {
-			fmt.Printf("Error fetching notary request: %v\n", err)
-			return
-		}
 
-		// die(makeNotaryRequestMakeBet(backendKey, acc, rpcCli, auctionContractHash, bet))
-
-		better, validatedBet, err := validateNotaryRequestMakeBet(notaryReq)
-		if err != nil {
-			fmt.Printf("Error validating notary request: %v\n", err)
-			return
-		}
-
-		if validatedBet != bet {
-			fmt.Printf("Bet mismatch: expected %d, got %d\n", bet, validatedBet)
-			return
-		}
-
-		//better, bet, err := validateNotaryRequestMakeBet(notaryEvent)
-		//if err != nil {
-		//	s.log.Error("invalid notary request for makeBet", zap.Error(err))
-		//	return
-		//}
-
-		err = s.proceedMainTxMakeBet(ctx, nAct, notaryReq, better, bet)
-		if err != nil {
-			fmt.Printf("Error proceeding makeBet transaction: %v\n", err)
-			return
-		}
+		die(makeNotaryRequestMakeBet(backendKey, acc, rpcCli, auctionContractHash, bet))
 	}
 
 }
@@ -328,6 +295,75 @@ func makeNotaryRequestMakeBet(backendKey *keys.PublicKey, acc *wallet.Account, r
 	return nil
 }
 
+func makeNotaryRequestGetPotentialWinner(backendKey *keys.PublicKey, acc *wallet.Account, rpcCli *rpcclient.Client, contractHash util.Uint160) error {
+	coSigners := []actor.SignerAccount{
+		{
+			Signer: transaction.Signer{
+				Account: backendKey.GetScriptHash(),
+				Scopes:  transaction.None,
+			},
+			Account: notary.FakeSimpleAccount(backendKey),
+		},
+		{
+			Signer: transaction.Signer{
+				Account: acc.ScriptHash(),
+				Scopes:  transaction.Global,
+			},
+			Account: acc,
+		},
+	}
+
+	nAct, err := notary.NewActor(rpcCli, coSigners, acc)
+	if err != nil {
+		return fmt.Errorf("failed to create notary actor: %w", err)
+	}
+
+	tx, err := nAct.MakeTunedCall(contractHash, "getPotentialWinner", nil, nil) // Call getPotentialWinner
+	if err != nil {
+		return fmt.Errorf("failed to create tuned call: %w", err)
+	}
+
+	mainHash, fallbackHash, vub, err := nAct.Notarize(tx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to notarize transaction: %w", err)
+	}
+
+	fmt.Printf("Notarize sending: mainHash - %v, fallbackHash - %v, vub - %d\n", mainHash, fallbackHash, vub)
+
+	res, err := nAct.Wait(mainHash, fallbackHash, vub, nil)
+	if err != nil {
+		return fmt.Errorf("failed to wait for notarization: %w", err)
+	}
+
+	if res.VMState != vmstate.Halt {
+		return fmt.Errorf("invalid VM state: %s", res.VMState)
+	}
+
+	// Extract potential winner's address from the result stack
+	if len(res.Stack) == 0 {
+		return fmt.Errorf("empty result stack")
+	}
+
+	// Convert stack item to Uint160
+	stackItem := res.Stack[0]
+	bs, err := stackItem.TryBytes()
+	if err != nil {
+		return fmt.Errorf("failed to extract bytes from stack item: %w", err)
+	}
+
+	// Convert the byte slice to Uint160
+	potentialWinnerHash, err := util.Uint160DecodeBytesBE(bs)
+	if err != nil {
+		return fmt.Errorf("failed to decode Uint160 from bytes: %w", err)
+	}
+
+	// Convert Uint160 to NEO address
+	potentialWinnerAddress := address.Uint160ToString(potentialWinnerHash)
+
+	fmt.Printf("Potential winner address: %s\n", potentialWinnerAddress)
+
+	return nil
+}
 
 func makeNotaryRequestFinishAuction(backendKey *keys.PublicKey, acc *wallet.Account, rpcCli *rpcclient.Client, contractHash util.Uint160) error {
 	coSigners := []actor.SignerAccount{

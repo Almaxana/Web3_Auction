@@ -6,8 +6,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/nspcc-dev/neo-go/pkg/core/interop/interopnames"
+	"github.com/nspcc-dev/neo-go/pkg/neorpc/result"
 	"github.com/nspcc-dev/neo-go/pkg/network/payload"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient/notary"
 	"github.com/nspcc-dev/neo-go/pkg/smartcontract/callflag"
@@ -17,30 +19,44 @@ import (
 	"go.uber.org/zap"
 )
 
-func (s *Server) proceedMainTxMakeBet(ctx context.Context, nAct *notary.Actor, notaryEvent *payload.P2PNotaryRequest, better util.Uint160, bet int) error {
-	err := nAct.Sign(notaryEvent.MainTransaction)
+func (s *Server) proceedMainTxMakeBet(ctx context.Context, nAct *notary.Actor, notaryEvent *result.NotaryRequestEvent, args []string) error {
+	// Декодируем адрес участника (better)????
+	better, err := util.Uint160DecodeStringLE(args[3])
+	if err != nil {
+		return fmt.Errorf("error decoding better address: %w", err)
+	}
+
+	betStr := args[4]
+	bet, err := strconv.Atoi(betStr) // bet amount to int
+	if err != nil {
+		return fmt.Errorf("error converting bet amount to integer: %w", err)
+	}
+
+	err = nAct.Sign(notaryEvent.NotaryRequest.MainTransaction) // sign transaction
 	if err != nil {
 		return fmt.Errorf("sign: %w", err)
 	}
 
-	// отправляем нотариальный запрос
-	mainHash, fallbackHash, vub, err := nAct.Notarize(notaryEvent.MainTransaction, nil)
+	// send notary query
+	mainHash, fallbackHash, vub, err := nAct.Notarize(notaryEvent.NotaryRequest.MainTransaction, nil)
 	if err != nil {
 		return fmt.Errorf("notarize: %w", err)
 	}
 
 	s.log.Info("notarize sending",
-		zap.String("hash", notaryEvent.MainTransaction.Hash().String()),
+		zap.String("hash", notaryEvent.NotaryRequest.MainTransaction.Hash().String()),
 		zap.String("main", mainHash.String()),
 		zap.String("fallback", fallbackHash.String()),
 		zap.Uint32("vub", vub))
 
-	// ждём принятия транзакции
 	_, err = nAct.Wait(mainHash, fallbackHash, vub, err)
 	if err != nil {
 		return fmt.Errorf("wait: %w", err)
 	}
 
+	s.log.Info("bet placed successfully",
+		zap.String("better", better.String()),
+		zap.Int("bet", bet))
 	return nil
 }
 
@@ -123,24 +139,4 @@ func validateNotaryRequestMakeBet(req *payload.P2PNotaryRequest) (util.Uint160, 
 	}
 
 	return better, bet, nil
-}
-
-func getPotentialWinner(rpcCli *rpcclient.Client, contractHash util.Uint160) (util.Uint160, error) {
-	act, err := actor.NewSimple(rpcCli, nil) 
-	if err != nil {
-		return util.Uint160{}, fmt.Errorf("failed to create actor: %w", err)
-	}
-
-	// получаем текущего победителя
-	res, err := act.Call(contractHash, "getPotentialWinner")
-	if err != nil {
-		return util.Uint160{}, fmt.Errorf("failed to call getPotentialWinner: %w", err)
-	}
-
-	potentialWinner, err := unwrap.Uint160(res)
-	if err != nil {
-		return util.Uint160{}, fmt.Errorf("failed to unwrap result: %w", err)
-	}
-
-	return potentialWinner, nil
 }
