@@ -62,7 +62,7 @@ func validateNotaryRequestGetNft(req *payload.P2PNotaryRequest) (util.Uint160, s
 		return util.Uint160{}, "", err
 	}
 
-	contractHashExpected, err := util.Uint160DecodeStringLE("77a7c4e6f9307e5ce55136daa92ce5cb4621f8be") // вызываемый контракт
+	contractHashExpected, err := util.Uint160DecodeStringLE("29a854a7741b84160c46172c8121de11486533a3") // вызываемый контракт
 	if err != nil {
 		return util.Uint160{}, "", err
 	}

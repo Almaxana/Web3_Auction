@@ -16,6 +16,7 @@ import (
 	"git.frostfs.info/TrueCloudLab/hrw"
 	"github.com/nspcc-dev/neo-go/pkg/core/transaction"
 	"github.com/nspcc-dev/neo-go/pkg/crypto/keys"
+	"github.com/nspcc-dev/neo-go/pkg/encoding/address"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient/actor"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient/notary"
@@ -88,6 +89,8 @@ func main() {
 	// 	die(makeNotaryRequestFinishAuction(backendKey, acc, rpcCli, auctionContractHash)) // создание НЗ (оборачивает main tx, которая состоит в вызове метода контракта)
 	case "getNFT":
 		die(makeNotaryRequestGetNft(backendKey, acc, rpcCli, nftContractHash)) // создание НЗ (оборачивает main tx, которая состоит в вызове метода контракта)
+	case "finishAuction":
+		die(makeNotaryRequestFinishAuction(backendKey, acc, rpcCli, auctionContractHash))
 	default:
 		// log.Printf("Unknown commandName: %s", commandName)
 		fmt.Printf("Unknown commandName: %s\n", commandName)
@@ -200,6 +203,7 @@ func makeNotaryRequestStartAuction(backendKey *keys.PublicKey, acc *wallet.Accou
 	if err != nil {
 		fmt.Printf("Invalid convertion nftId: %s", err)
 	}
+	
 	tx, err := nAct.MakeTunedCall(contractHash, "start", nil, nil, acc.ScriptHash(), nftIdBytes, initBet) // tx = вызов метода start на
 	// контракте auction
 	if err != nil {
@@ -330,7 +334,14 @@ func makeNotaryRequestFinishAuction(backendKey *keys.PublicKey, acc *wallet.Acco
 		return fmt.Errorf("invalid stack size: %d", len(res.Stack))
 	}
 
-	fmt.Println("uction finished")
+	winnerBytes, ok := res.Stack[0].Value().([]byte)
+	if !ok {
+		panic("Stack[0] value is not of type []byte")
+	}
+
+	winner, _ := util.Uint160DecodeBytesBE(winnerBytes)
+
+	fmt.Printf("auction finished winner %s\n", address.Uint160ToString(winner))
 
 	return nil
 }

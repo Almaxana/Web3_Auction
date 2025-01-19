@@ -5,12 +5,15 @@ import (
 	"github.com/nspcc-dev/neo-go/pkg/interop/contract"
 	"github.com/nspcc-dev/neo-go/pkg/interop/lib/address"
 	"github.com/nspcc-dev/neo-go/pkg/interop/native/management"
-	"github.com/nspcc-dev/neo-go/pkg/interop/runtime"
 	"github.com/nspcc-dev/neo-go/pkg/interop/storage"
+	"github.com/nspcc-dev/neo-go/pkg/vm/emit"
 )
 
-const nyanContractHashString = "NdKipaSkcoXnwBLdBGCCb1exoi1HuiWj5x"
+// 77a7c4e6f9307e5ce55136daa92ce5cb4621f8be - адрес nft контракта, чтобы получить из него nyanContractHashString, надо вручную в консоли
+// написать команду neo-go util convert 77a7c4e6f9307e5ce55136daa92ce5cb4621f8be и взять из нее LE ScriptHash to Address
+const nyanContractHashString = "Nantu4ATNAbcqujTf8JFwtVpdikbFUkgc6"
 
+// Prefixes used for contract data storage.
 const (
 	initBetKey         = "initBet"
 	currentBetKey      = "currentBet"
@@ -19,7 +22,7 @@ const (
 	ownerKey           = "ownerKey"
 )
 
-type AuctionItem struct {
+type Item struct {
 	Owner      interop.Hash160
 	InitialBet int
 	CurrentBet int
@@ -37,23 +40,23 @@ func Update(script []byte, manifest []byte, data any) {
 	management.UpdateWithData(script, manifest, data)
 }
 
-func Start(auctionOwnerHash160 interop.Hash160, lotId []byte, initBet int) {
+func Start(Owner interop.Hash160, lotId []byte, initBet int) {
 	ctx := storage.GetContext()
 
 	currentOwner := storage.Get(ctx, ownerKey)
 	if currentOwner != nil {
-		panic("Current auction is in progress, please wait until it finishes")
+		panic("now current  is processing, wait for finish")
 	}
 	if initBet < 0 {
-		panic("Initial bet must not be negative")
+		panic("initial bet must not be negative")
 	}
 
 	ownerOfLot := contract.Call(address.ToHash160(nyanContractHashString), "ownerOf", contract.All, lotId).(interop.Hash160)
-	if !ownerOfLot.Equals(auctionOwnerHash160) {
-		panic("\nYou can't start auction with lot " + string(lotId) + " because you're not its owner\n")
+	if !ownerOfLot.Equals(Owner) {
+		panic("\nyou can't start  with lot " + string(lotId) + " because you're not its owner\n")
 	}
 
-	storage.Put(ctx, ownerKey, auctionOwnerHash160)
+	storage.Put(ctx, ownerKey, Owner)
 	storage.Put(ctx, lotKey, lotId)
 	storage.Put(ctx, initBetKey, initBet)
 	storage.Put(ctx, currentBetKey, initBet)
@@ -75,30 +78,36 @@ func ShowLotId() string {
 	return string(data.([]byte))
 }
 
-func FinishAuction() (winner interop.Hash160, lastBet int) {
-	if !runtime.CheckWitness(runtime.GetScriptContainer().Sender) {
-		panic("not witnessed")
-	}
-
+func Finish(Owner interop.Hash160) interop.Hash160 {
 	ctx := storage.GetReadOnlyContext()
 
-	winner, ok := storage.Get(ctx, potentialWinnerKey).(interop.Hash160)
-	if !ok {
-		panic("FinishAuction get the winner")
+	lotData := storage.Get(ctx, lotKey)
+	if lotData == nil {
+		panic("LotID is not set in storage")
+	}
+	lotID := lotData.([]byte)
+
+	ownerOfLot := contract.Call(address.ToHash160(nyanContractHashString), "ownerOf", contract.All, lotID).(interop.Hash160)
+	if !ownerOfLot.Equals(Owner) {
+		panic("\nyou can't finish  with lot because you're not its owner\n")
 	}
 
-	lastBet, ok = storage.Get(ctx, currentBetKey).(int)
-	if !ok {
-		panic("FinishAuction get the bet")
+	var winner interop.Hash160
+	winnerData := storage.Get(ctx, potentialWinnerKey)
+	if winnerData == nil {
+		winner = ownerOfLot
+	} else {
+		winner = winnerData.(interop.Hash160)
 	}
+
+	contract.Call(address.ToHash160(nyanContractHashString), "transfer", contract.All, winner, lotID, nil)
 
 	clearStorage()
 
-	return
+	return winner
 }
 
-// clearStorage
-// in this moment this func delete all values storage by hardcode prefix
+// clearStorage in this moment this func delete all values storage by hardcode prefix
 func clearStorage() {
 	ctx := storage.GetContext()
 

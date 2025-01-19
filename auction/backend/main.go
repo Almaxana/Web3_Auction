@@ -306,6 +306,8 @@ func (s *Server) runNotaryValidator(ctx context.Context) { // слушатель
 						err = s.proceedMainTxGetNft(ctx, nAct, notaryEvent, tokenName)
 					case "start":
 						err = s.proceedMainTxStartAuction(ctx, nAct, notaryEvent, nftIdBytes, initBet)
+					case "finish":
+						err = s.proceedMainTxFinishAuction(ctx, nAct, notaryEvent)
 					}
 
 				} else {
