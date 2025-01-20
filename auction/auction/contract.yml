@@ -3,9 +3,9 @@ sourceurl: http://example.com/
 safemethods: []
 supportedstandards: []
 events:
-    - name: Hello world!
-      parameters:
-        - name: args
-          type: Array
+  - name: info
+    parameters:
+      - name: message
+        type: ByteString
 permissions:
     - methods: '*'
