@@ -10,6 +10,7 @@ require (
 	git.frostfs.info/TrueCloudLab/frostfs-node v0.44.6
 	git.frostfs.info/TrueCloudLab/frostfs-sdk-go v0.0.0-20241226115718-82e48c8a634d
 	git.frostfs.info/TrueCloudLab/hrw v1.2.1
+	github.com/gorilla/websocket v1.5.3
 	github.com/nspcc-dev/neo-go v0.107.2
 	github.com/nspcc-dev/neo-go/pkg/interop v0.0.0-20241228090728-4d2b88dd9dbd
 	github.com/spf13/viper v1.19.0
@@ -34,7 +35,6 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/holiman/uint256 v1.3.1 // indirect

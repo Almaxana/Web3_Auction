@@ -16,7 +16,12 @@ const (
 	lotKey             = "l" // nft id
 	organizerKey       = "o" // organizer of the auction
 	potentialWinnerKey = "w" // owner of the last bet
+	ownerLotKey        = "n"
 )
+
+// b59cee8ea11307d6b911bf314ef01d63071448f3 - адрес nft контракта, чтобы получить из него nftContractHashString, надо вручную в консоли
+// написать команду neo-go util convert b59cee8ea11307d6b911bf314ef01d63071448f3 и взять из нее LE ScriptHash to Address
+const nftContractHashString = "NQBnDzrg6B6AconzXUwZkyLTnwkt9o9sBg"
 
 type AuctionItem struct {
 	Owner      interop.Hash160
@@ -46,9 +51,6 @@ func Start(auctionOwner interop.Hash160, lotId []byte, initBet int) {
 		panic("initial bet must not be negative")
 	}
 
-	// b59cee8ea11307d6b911bf314ef01d63071448f3 - адрес nft контракта, чтобы получить из него nftContractHashString, надо вручную в консоли
-	// написать команду neo-go util convert b59cee8ea11307d6b911bf314ef01d63071448f3 и взять из нее LE ScriptHash to Address
-	nftContractHashString := "Ni6KjTKBQBDBSQtTWMrzQuES9weEKrdSxF"
 	ownerOfLot := contract.Call(address.ToHash160(nftContractHashString), "ownerOf", contract.All, lotId).(interop.Hash160)
 	if !ownerOfLot.Equals(auctionOwner) {
 		panic("you can't start auction with lot " + string(lotId) + " because you're not its owner")
@@ -91,4 +93,46 @@ func ShowLotId() string {
 	}
 
 	return string(data.([]byte))
+}
+
+func Finish(Owner interop.Hash160) interop.Hash160 {
+	ctx := storage.GetReadOnlyContext()
+
+	lotData := storage.Get(ctx, lotKey)
+	if lotData == nil {
+		panic("LotID is not set in storage")
+	}
+	lotID := lotData.([]byte)
+
+	ownerOfLot := contract.Call(address.ToHash160(nftContractHashString), "ownerOf", contract.All, lotID).(interop.Hash160)
+	if !ownerOfLot.Equals(Owner) {
+		panic("\nyou can't finish  with lot because you're not its owner\n")
+	}
+
+	var winner interop.Hash160
+	winnerData := storage.Get(ctx, potentialWinnerKey)
+	if winnerData == nil {
+		winner = ownerOfLot
+	} else {
+		winner = winnerData.(interop.Hash160)
+	}
+
+	contract.Call(address.ToHash160(nftContractHashString), "transfer", contract.All, winner, lotID, nil)
+
+	clearStorage()
+
+	runtime.Notify("info", []byte("Auction has been finished. Winner is: "+ address.FromHash160(winner)))
+
+	return winner
+}
+
+// clearStorage in this moment this func delete all values storage by hardcode prefix
+func clearStorage() {
+	ctx := storage.GetContext()
+
+	storage.Delete(ctx, initBetKey)
+	storage.Delete(ctx, currentBetKey)
+	storage.Delete(ctx, potentialWinnerKey)
+	storage.Delete(ctx, lotKey)
+	storage.Delete(ctx, ownerLotKey)
 }

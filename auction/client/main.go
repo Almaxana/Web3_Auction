@@ -19,6 +19,7 @@ import (
 	"github.com/nspcc-dev/neo-go/pkg/core/state"
 	"github.com/nspcc-dev/neo-go/pkg/core/transaction"
 	"github.com/nspcc-dev/neo-go/pkg/crypto/keys"
+	"github.com/nspcc-dev/neo-go/pkg/encoding/address"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient/actor"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient/notary"
@@ -87,7 +88,7 @@ func main() {
 		listOfTickets[i] = strconv.Itoa(num)
 	}
 
-	go ListenNotifications(rpcEndpointWc, viper.GetString(cfgAuctionContract))
+	go ListenNotifications(ctx, rpcEndpointWc, viper.GetString(cfgAuctionContract))
 
 	reader := bufio.NewReader(os.Stdin) // создаём reader для чтения команд
 	for {
@@ -117,6 +118,8 @@ func main() {
 			die(makeNotaryRequestStartAuction(backendKey, acc, rpcCli, auctionContractHash, nftId, initBet)) // создание НЗ (оборачивает main tx, которая состоит в вызове метода контракта)
 		case "getNFT":
 			die(makeNotaryRequestGetNft(backendKey, acc, rpcCli, nftContractHash))
+		case "finishAuction":
+			die(makeNotaryRequestFinishAuction(backendKey, acc, rpcCli, auctionContractHash))
 		case "exit":
 			return
 		default:
@@ -241,6 +244,49 @@ func makeNotaryRequestStartAuction(backendKey *keys.PublicKey, acc *wallet.Accou
 	if err != nil {
 		return fmt.Errorf("makeNotaryRequestPostProcessing: %w", err)
 	}
+
+	return nil
+}
+
+func makeNotaryRequestFinishAuction(backendKey *keys.PublicKey, acc *wallet.Account, rpcCli *rpcclient.Client, contractHash util.Uint160) error {
+	nAct, err := makeNotaryRequestPreProcessing(acc, backendKey, rpcCli)
+	if err != nil {
+		return fmt.Errorf("makeNotaryRequestPreProcessing: %w", err)
+	}
+
+	tx, err := nAct.MakeTunedCall(contractHash, "finish", nil, nil, acc.ScriptHash()) // tx = вызов метода finish на контракте auction
+	if err != nil {
+		return err
+	}
+
+	mainHash, fallbackHash, vub, err := nAct.Notarize(tx, err) // отправка нотариального запроса; vub = valid until block
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Notarize sending: mainHash - %v, fallbackHash - %v, vub - %d\n", mainHash, fallbackHash, vub)
+
+	res, err := nAct.Wait(mainHash, fallbackHash, vub, err) // ждем пока примется какя-нибудь tx  (основная (main), если все хорошо, либо fallBack)
+	if err != nil {
+		return err
+	}
+
+	if res.VMState != vmstate.Halt {
+		return fmt.Errorf("invalid vm state: %s", res.VMState)
+	}
+
+	if len(res.Stack) != 1 {
+		return fmt.Errorf("invalid stack size: %d", len(res.Stack))
+	}
+
+	winnerBytes, ok := res.Stack[0].Value().([]byte)
+	if !ok {
+		panic("Stack[0] value is not of type []byte")
+	}
+
+	winner, _ := util.Uint160DecodeBytesBE(winnerBytes)
+
+	fmt.Printf("auction finished winner %s\n", address.Uint160ToString(winner))
 
 	return nil
 }

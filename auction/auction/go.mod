@@ -4,7 +4,4 @@ go 1.22
 
 toolchain go1.22.10
 
-require (
-	github.com/nspcc-dev/neo-go v0.107.2
-	github.com/nspcc-dev/neo-go/pkg/interop v0.0.0-20241212130705-ea0a6114d2d6
-)
+require github.com/nspcc-dev/neo-go/pkg/interop v0.0.0-20241212130705-ea0a6114d2d6
