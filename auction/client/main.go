@@ -90,44 +90,60 @@ func main() {
 
 	go ListenNotifications(ctx, rpcEndpointWc, viper.GetString(cfgAuctionContract))
 
-	reader := bufio.NewReader(os.Stdin) // создаём reader для чтения команд
+	var in chan string
+
+	go func(ctx context.Context, in chan string) {
+		reader := bufio.NewReader(os.Stdin)
+		for {
+			select {
+			case <-ctx.Done():
+				die(ctx.Err())
+			default:
+				input, err := reader.ReadString('\n')
+				if err != nil {
+					fmt.Println("Ошибка ввода:", err)
+				}
+				in <- input
+			}
+		}
+	}(ctx, in)
+
 	for {
 		fmt.Print("Введите команду: ")
-		input, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Println("Ошибка ввода:", err)
-			continue
-		}
-		input = strings.TrimSpace(input)
-		args := strings.Fields(input)
 
-		commandName := args[0]
+		select {
+		case <-ctx.Done():
+			die(ctx.Err())
+		case input := <-in:
+			input = strings.TrimSpace(input)
+			args := strings.Fields(input)
 
-		die(claimNotaryDeposit(acc)) // запрос НД
+			commandName := args[0]
 
-		switch commandName {
-		case "startAuction":
-			nftId := args[1] // lot
+			die(claimNotaryDeposit(acc)) // запрос НД
 
-			initBetStr := args[2] // initBet
-			initBet, err := strconv.Atoi(initBetStr)
-			if err != nil {
-				fmt.Printf("Error converting bet number to integer: %v\n", err)
+			switch commandName {
+			case "startAuction":
+				nftId := args[1] // lot
+
+				initBetStr := args[2] // initBet
+				initBet, err := strconv.Atoi(initBetStr)
+				if err != nil {
+					fmt.Printf("Error converting bet number to integer: %v\n", err)
+					return
+				}
+				die(makeNotaryRequestStartAuction(backendKey, acc, rpcCli, auctionContractHash, nftId, initBet)) // создание НЗ (оборачивает main tx, которая состоит в вызове метода контракта)
+			case "getNFT":
+				die(makeNotaryRequestGetNft(backendKey, acc, rpcCli, nftContractHash))
+			case "finishAuction":
+				die(makeNotaryRequestFinishAuction(backendKey, acc, rpcCli, auctionContractHash))
+			case "exit":
 				return
+			default:
+				fmt.Printf("Unknown commandName: %s\n", commandName)
 			}
-			die(makeNotaryRequestStartAuction(backendKey, acc, rpcCli, auctionContractHash, nftId, initBet)) // создание НЗ (оборачивает main tx, которая состоит в вызове метода контракта)
-		case "getNFT":
-			die(makeNotaryRequestGetNft(backendKey, acc, rpcCli, nftContractHash))
-		case "finishAuction":
-			die(makeNotaryRequestFinishAuction(backendKey, acc, rpcCli, auctionContractHash))
-		case "exit":
-			return
-		default:
-			fmt.Printf("Unknown commandName: %s\n", commandName)
 		}
-
 	}
-
 }
 
 func claimNotaryDeposit(acc *wallet.Account) error {
