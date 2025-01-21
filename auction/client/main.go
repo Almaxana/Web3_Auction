@@ -90,32 +90,34 @@ func main() {
 
 	go ListenNotifications(ctx, rpcEndpointWc, viper.GetString(cfgAuctionContract))
 
-	var in chan string
+	in := make(chan string)
 
-	go func(ctx context.Context, in chan string) {
+	go func(ctx context.Context, in chan<- string) {
 		reader := bufio.NewReader(os.Stdin)
 		for {
 			select {
 			case <-ctx.Done():
+				close(in)
 				die(ctx.Err())
+				return
 			default:
 				input, err := reader.ReadString('\n')
 				if err != nil {
 					fmt.Println("Ошибка ввода:", err)
+					continue
 				}
-				in <- input
+				in <- strings.TrimSpace(input)
 			}
 		}
 	}(ctx, in)
 
 	for {
 		fmt.Print("Введите команду: ")
-
+		
 		select {
 		case <-ctx.Done():
 			die(ctx.Err())
 		case input := <-in:
-			input = strings.TrimSpace(input)
 			args := strings.Fields(input)
 
 			commandName := args[0]
