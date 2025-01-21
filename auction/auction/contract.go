@@ -135,4 +135,5 @@ func clearStorage() {
 	storage.Delete(ctx, potentialWinnerKey)
 	storage.Delete(ctx, lotKey)
 	storage.Delete(ctx, ownerLotKey)
+	storage.Delete(ctx, organizerKey)
 }
