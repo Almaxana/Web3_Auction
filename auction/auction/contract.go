@@ -121,7 +121,7 @@ func Finish(Owner interop.Hash160) interop.Hash160 {
 
 	clearStorage()
 
-	runtime.Notify("info", []byte("Auction has been finished. Winner is: "+ address.FromHash160(winner)))
+	runtime.Notify("info", []byte("Auction has been finished. Winner is: "+address.FromHash160(winner)))
 
 	return winner
 }

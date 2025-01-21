@@ -113,7 +113,7 @@ func main() {
 
 	for {
 		fmt.Print("Введите команду: ")
-		
+
 		select {
 		case <-ctx.Done():
 			die(ctx.Err())
