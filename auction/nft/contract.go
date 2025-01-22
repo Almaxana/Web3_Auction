@@ -4,6 +4,7 @@ import (
 	"github.com/nspcc-dev/neo-go/pkg/interop"
 	"github.com/nspcc-dev/neo-go/pkg/interop/contract"
 	"github.com/nspcc-dev/neo-go/pkg/interop/iterator"
+	"github.com/nspcc-dev/neo-go/pkg/interop/lib/address"
 	"github.com/nspcc-dev/neo-go/pkg/interop/native/crypto"
 	"github.com/nspcc-dev/neo-go/pkg/interop/native/management"
 	"github.com/nspcc-dev/neo-go/pkg/interop/native/std"
@@ -19,6 +20,10 @@ const (
 
 	ownerKey       = 'o'
 	totalSupplyKey = 's'
+
+	nnsSelfDomain         = "nft.auc"
+	nnsRecordType         = 16
+	nnsContractHashString = "NcCZaxnLkXvrd56DgpFSSBjhj2DqzH3jKP"
 )
 
 type NFTItem struct {
@@ -48,6 +53,14 @@ func _deploy(data interface{}, isUpdate bool) {
 	ctx := storage.GetContext()
 	storage.Put(ctx, ownerKey, args.Admin)
 	storage.Put(ctx, totalSupplyKey, 0)
+
+	selfHash := runtime.GetExecutingScriptHash()
+	contract.Call(address.ToHash160(nnsContractHashString), "register", contract.All, nnsSelfDomain, address.ToHash160("NfgHwwTi3wHAS8aFAN243C5vGbkYDpqLHP"), "owner_email@mail.ru", 100, 100, 31536000, 31536000)
+	currentNnsRecord := contract.Call(address.ToHash160(nnsContractHashString), "getRecords", contract.All, nnsSelfDomain, nnsRecordType)
+	if currentNnsRecord != nil {
+		contract.Call(address.ToHash160(nnsContractHashString), "deleteRecords", contract.All, nnsSelfDomain, nnsRecordType)
+	}
+	contract.Call(address.ToHash160(nnsContractHashString), "addRecord", contract.All, nnsSelfDomain, nnsRecordType, address.FromHash160(selfHash))
 }
 
 // Symbol returns token symbol, it's NYAN.

@@ -2,11 +2,15 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +24,7 @@ import (
 	"github.com/nspcc-dev/neo-go/pkg/core/transaction"
 	"github.com/nspcc-dev/neo-go/pkg/crypto/keys"
 	"github.com/nspcc-dev/neo-go/pkg/encoding/address"
+	"github.com/nspcc-dev/neo-go/pkg/encoding/base58"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient/actor"
 	"github.com/nspcc-dev/neo-go/pkg/rpcclient/notary"
@@ -31,14 +36,13 @@ import (
 )
 
 const (
-	cfgRPCEndpoint     = "rpc_endpoint"
-	cfgRPCEndpointWC   = "rpc_endpoint_ws"
-	cfgBackendKey      = "backend_key"
-	cfgWallet          = "wallet"
-	cfgPassword        = "password"
-	cfgNftContract     = "nft_contract"
-	cfgAuctionContract = "auction_contract"
-	cfgBackendURL      = "backend_url"
+	cfgRPCEndpoint   = "rpc_endpoint"
+	cfgRPCEndpointWC = "rpc_endpoint_ws"
+	cfgBackendKey    = "backend_key"
+	cfgWallet        = "wallet"
+	cfgPassword      = "password"
+	cfgNnsContract   = "nns_contract"
+	cfgBackendURL    = "backend_url"
 )
 
 var listOfTickets []string
@@ -73,10 +77,11 @@ func main() {
 	err = acc.Decrypt(viper.GetString(cfgPassword), w.Scrypt) // подтверждаем его паролем
 	die(err)
 
-	nftContractHash, err := util.Uint160DecodeStringLE(viper.GetString(cfgNftContract)) // получаем адрес контракта c nft
-	die(err)
+	nnsContractHash := viper.GetString(cfgNnsContract)
 
-	auctionContractHash, err := util.Uint160DecodeStringLE(viper.GetString(cfgAuctionContract)) // получаем адрес auction контракта
+	nftContractHash, err := GetNnsResolve("nft.auc", nnsContractHash, viper.GetString(cfgRPCEndpoint))
+	die(err)
+	auctionContractHash, err := GetNnsResolve("auc.auc", nnsContractHash, viper.GetString(cfgRPCEndpoint))
 	die(err)
 
 	numbers := make([]int, 100) // создание списка имен пока еще свободных nft
@@ -88,7 +93,7 @@ func main() {
 		listOfTickets[i] = strconv.Itoa(num)
 	}
 
-	go ListenNotifications(ctx, rpcEndpointWc, viper.GetString(cfgAuctionContract))
+	go ListenNotifications(ctx, rpcEndpointWc, auctionContractHash.StringLE())
 
 	in := make(chan string)
 
@@ -146,6 +151,103 @@ func main() {
 			}
 		}
 	}
+}
+
+func GetNnsResolve(domainName string, nnsContractHash string, rpcEndpoint string) (util.Uint160, error) {
+
+	type StackItem struct {
+		Type  string `json:"type"`
+		Value []struct {
+			Type  string `json:"type"`
+			Value string `json:"value"`
+		} `json:"value"`
+	}
+
+	type RPCResponse struct {
+		ID      int    `json:"id"`
+		JSONRPC string `json:"jsonrpc"`
+		Result  struct {
+			State         string        `json:"state"`
+			GasConsumed   string        `json:"gasconsumed"`
+			Script        string        `json:"script"`
+			Stack         []StackItem   `json:"stack"`
+			Exception     interface{}   `json:"exception"`
+			Notifications []interface{} `json:"notifications"`
+		} `json:"result"`
+	}
+
+	rpcRequest := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "invokefunction",
+		"params": []interface{}{
+			nnsContractHash,
+			"resolve",
+			[]interface{}{
+				map[string]interface{}{
+					"type":  "String",
+					"value": domainName,
+				},
+				map[string]interface{}{
+					"type":  "Integer",
+					"value": "16",
+				},
+			},
+		},
+		"id": 1,
+	}
+
+	jsonData, err := json.Marshal(rpcRequest)
+	if err != nil {
+		fmt.Printf("Ошибка кодирования JSON: %v\n", err)
+		return util.Uint160{}, err
+	}
+
+	// Отправка HTTP POST-запроса
+	resp, err := http.Post(rpcEndpoint, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Printf("Ошибка отправки запроса: %v\n", err)
+		return util.Uint160{}, err
+	}
+	defer resp.Body.Close()
+
+	// Чтение ответа
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Ошибка чтения ответа: %v\n", err)
+		return util.Uint160{}, err
+	}
+
+	var rpcResponse RPCResponse
+
+	// Парсим JSON-ответ
+	err = json.Unmarshal([]byte(string(body)), &rpcResponse)
+	if err != nil {
+		fmt.Println("Ошибка парсинга JSON:", err)
+		return util.Uint160{}, err
+	}
+
+	// Извлекаем нужное значение из стека
+	if len(rpcResponse.Result.Stack) > 0 && len(rpcResponse.Result.Stack[0].Value) > 0 {
+		value := rpcResponse.Result.Stack[0].Value[0].Value
+		decoded64, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			fmt.Println("Ошибка при декодировании Base64:", err)
+		}
+
+		decoded58, err := base58.CheckDecode(string(decoded64))
+		if err != nil {
+			return util.Uint160{}, err
+		}
+		contractHashStr := hex.EncodeToString(decoded58)[2:]
+		contractHash, err := util.Uint160DecodeStringBE(contractHashStr)
+		if err != nil {
+			return util.Uint160{}, err
+		}
+
+		return contractHash, nil
+	}
+
+	return util.Uint160{}, fmt.Errorf("stack is empty or unexpected structure")
 }
 
 func claimNotaryDeposit(acc *wallet.Account) error {
@@ -277,20 +379,9 @@ func makeNotaryRequestFinishAuction(backendKey *keys.PublicKey, acc *wallet.Acco
 		return err
 	}
 
-	mainHash, fallbackHash, vub, err := nAct.Notarize(tx, err) // отправка нотариального запроса; vub = valid until block
+	res, err := makeNotaryRequestPostProcessing(tx, nAct)
 	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Notarize sending: mainHash - %v, fallbackHash - %v, vub - %d\n", mainHash, fallbackHash, vub)
-
-	res, err := nAct.Wait(mainHash, fallbackHash, vub, err) // ждем пока примется какя-нибудь tx  (основная (main), если все хорошо, либо fallBack)
-	if err != nil {
-		return err
-	}
-
-	if res.VMState != vmstate.Halt {
-		return fmt.Errorf("invalid vm state: %s", res.VMState)
+		return fmt.Errorf("makeNotaryRequestPostProcessing: %w", err)
 	}
 
 	if len(res.Stack) != 1 {

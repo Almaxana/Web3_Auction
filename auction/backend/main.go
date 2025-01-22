@@ -30,6 +30,7 @@ import (
 	"github.com/nspcc-dev/neo-go/pkg/core/native"
 	"github.com/nspcc-dev/neo-go/pkg/core/transaction"
 	"github.com/nspcc-dev/neo-go/pkg/crypto/keys"
+	"github.com/nspcc-dev/neo-go/pkg/encoding/base58"
 	"github.com/nspcc-dev/neo-go/pkg/encoding/bigint"
 	"github.com/nspcc-dev/neo-go/pkg/neorpc/result"
 	"github.com/nspcc-dev/neo-go/pkg/network/payload"
@@ -54,8 +55,7 @@ const (
 	cfgRPCEndpointWS    = "rpc_endpoint_ws"
 	cfgWallet           = "wallet"
 	cfgPassword         = "password"
-	cfgNftContract      = "nft_contract"
-	cfgAuctionContract  = "auction_contract"
+	cfgNnsContract      = "nns_contract"
 	cfgStorageNode      = "storage_node"
 	cfgStorageContainer = "storage_container"
 	cfgListenAddress    = "listen_address"
@@ -91,6 +91,7 @@ type Server struct {
 	gasAct      *nep17.Token
 	nftHash     util.Uint160
 	auctionHash util.Uint160
+	nnsHash     util.Uint160
 	cnrID       cid.ID // Id контейнера в frost fs для хранения данных
 	log         *zap.Logger
 	rpcCli      *rpcclient.Client
@@ -125,17 +126,22 @@ func NewServer(ctx context.Context) (*Server, error) {
 		return nil, err
 	}
 
-	contractNftHash, err := util.Uint160DecodeStringLE(viper.GetString(cfgNftContract))
+	contractNnsHash, err := util.Uint160DecodeStringLE(viper.GetString(cfgNnsContract))
+	if err != nil {
+		return nil, err
+	}
+
+	contractNftHash, err := ParseNnsResolve("nft.auc", contractNnsHash, act)
+	if err != nil {
+		return nil, err
+	}
+
+	contractAuctionHash, err := ParseNnsResolve("auc.auc", contractNnsHash, act)
 	if err != nil {
 		return nil, err
 	}
 
 	ticketApiUrl := viper.GetString(cfgTicketApiUrl)
-
-	contractAuctionHash, err := util.Uint160DecodeStringLE(viper.GetString(cfgAuctionContract))
-	if err != nil {
-		return nil, err
-	}
 
 	var cnrID cid.ID
 	if err = cnrID.DecodeString(viper.GetString(cfgStorageContainer)); err != nil {
@@ -182,12 +188,42 @@ func NewServer(ctx context.Context) (*Server, error) {
 		rpcCli:      rpcCli,
 		nftHash:     contractNftHash,
 		auctionHash: contractAuctionHash,
+		nnsHash:     contractNnsHash,
 		gasAct:      nep17.New(act, gas.Hash),
 		cnrID:       cnrID,
 		log:         log,
 		sub:         sub,
 		apiUrl:      ticketApiUrl,
 	}, nil
+}
+
+func ParseNnsResolve(domainName string, contractNnsHash util.Uint160, act *actor.Actor) (util.Uint160, error) {
+	res, _ := act.Call(contractNnsHash, "resolve", domainName, 16)
+	item := res.Stack[0]
+	var output []string
+	switch v := item.Value().(type) {
+	case []stackitem.Item:
+		for _, innerItem := range v {
+			if innerBytes, ok := innerItem.Value().([]byte); ok { // Проверяем, является ли элемент ByteString
+				output = append(output, string(innerBytes)) // Преобразуем ByteString в строку
+			} else {
+				return util.Uint160{}, fmt.Errorf("unexpected type in nns resolve "+domainName+" output array item: %T", innerItem.Value())
+			}
+		}
+	default:
+		return util.Uint160{}, fmt.Errorf("unexpected type in nns resolve "+domainName+" output array: %T", v)
+	}
+	decoded, err := base58.CheckDecode(output[0])
+	if err != nil {
+		return util.Uint160{}, err
+	}
+	contractHashStr := hex.EncodeToString(decoded)[2:]
+	contractHash, err := util.Uint160DecodeStringBE(contractHashStr)
+	if err != nil {
+		return util.Uint160{}, err
+	}
+
+	return contractHash, nil
 }
 
 func (s *Server) Listen(ctx context.Context) error {

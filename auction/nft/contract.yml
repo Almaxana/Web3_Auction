@@ -13,4 +13,4 @@ events:
       - name: tokenId
         type: ByteArray
 permissions:
-  - methods: ["onNEP11Payment"]
+  - methods: ["onNEP11Payment", "getRecords", "deleteRecords", "addRecord", "register"]
