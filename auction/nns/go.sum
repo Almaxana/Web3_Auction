@@ -1,0 +1,4 @@
+git.frostfs.info/TrueCloudLab/frostfs-contract v0.21.1 h1:k1Qw8dWUQczfo0eVXlhrq9eXEbUMyDLW8jEMzY+gxMc=
+git.frostfs.info/TrueCloudLab/frostfs-contract v0.21.1/go.mod h1:5fSm/l5xSjGWqsPUffSdboiGFUHa7y/1S0fvxzQowN8=
+github.com/nspcc-dev/neo-go/pkg/interop v0.0.0-20240727093519-1a48f1ce43ec h1:vDrbVXF2+2uP0RlkZmem3QYATcXCu9BzzGGCNsNcK7Q=
+github.com/nspcc-dev/neo-go/pkg/interop v0.0.0-20240727093519-1a48f1ce43ec/go.mod h1:/vrbWSHc7YS1KSYhVOyyeucXW/e+1DkVBOgnBEXUCeY=
