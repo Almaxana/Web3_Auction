@@ -75,35 +75,27 @@ func Start(auctionOwner interop.Hash160, lotId []byte, initBet int) {
 	runtime.Notify("info", []byte("New auction started with initial bet = "+intToStr(initBet)+" by user "+address.FromHash160(auctionOwner)))
 }
 
-func intToStr(value int) string {
-	if value == 0 {
-		return "0"
-	}
-	var chars = "0123456789"
-	var result string
-	for value > 0 {
-		result = string(chars[value%10]) + result
-		value = value / 10
-	}
+func MakeBet(better interop.Hash160, bet int) {
+	ctx := storage.GetContext()
 
-	return result
-}
-
-func ShowCurrentBet() string {
-	data := storage.Get(storage.GetReadOnlyContext(), currentBetKey)
-	if data == nil {
-		return "0"
+	auctionOwner := storage.Get(ctx, organizerKey).(interop.Hash160)
+	if auctionOwner == nil {
+		panic("auction has not started")
 	}
-	return string(data.([]byte))
-}
-
-func ShowLotId() string {
-	data := storage.Get(storage.GetReadOnlyContext(), lotKey)
-	if data == nil {
-		return "nil"
+	if better.Equals(auctionOwner) {
+		panic("auction owner cannot make bet")
 	}
 
-	return string(data.([]byte))
+	currentBet := storage.Get(ctx, currentBetKey).(int)
+	if bet <= currentBet {
+		panic("bet must be higher than the current bet")
+	}
+
+	storage.Put(ctx, currentBetKey, bet)
+	storage.Put(ctx, potentialWinnerKey, better)
+
+	runtime.Notify("info", []byte("New bet = "+intToStr(bet)+" is made by user "+address.FromHash160(better)))
+
 }
 
 func Finish(finishInitiator interop.Hash160) interop.Hash160 {
@@ -137,6 +129,37 @@ func Finish(finishInitiator interop.Hash160) interop.Hash160 {
 	runtime.Notify("info", []byte("Auction has been finished. Winner is: "+address.FromHash160(winner)))
 
 	return winner
+}
+
+func ShowCurrentBet() string {
+	data := storage.Get(storage.GetReadOnlyContext(), currentBetKey)
+	if data == nil {
+		return "0"
+	}
+	return string(data.([]byte))
+}
+
+func ShowLotId() string {
+	data := storage.Get(storage.GetReadOnlyContext(), lotKey)
+	if data == nil {
+		return "nil"
+	}
+
+	return string(data.([]byte))
+}
+
+func intToStr(value int) string {
+	if value == 0 {
+		return "0"
+	}
+	var chars = "0123456789"
+	var result string
+	for value > 0 {
+		result = string(chars[value%10]) + result
+		value = value / 10
+	}
+
+	return result
 }
 
 // clearStorage in this moment this func delete all values storage by hardcode prefix

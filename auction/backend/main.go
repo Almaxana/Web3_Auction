@@ -359,6 +359,8 @@ func (s *Server) runNotaryValidator(ctx context.Context) { // слушатель
 						err = s.proceedMainTxGetNft(ctx, nAct, notaryEvent, tokenName)
 					case "start":
 						err = s.proceedMainTxStartAuction(nAct, notaryEvent)
+					case "makeBet":
+						err = s.proceedMainTxMakeBet(nAct, notaryEvent)
 					case "finish":
 						err = s.proceedMainTxFinishAuction(nAct, notaryEvent)
 					}
@@ -434,6 +436,8 @@ func validateNotaryRequest(req *payload.P2PNotaryRequest, s *Server) (util.Uint1
 		sh, tokenName, err = validateNotaryRequestGetNft(req, s)
 	case "start":
 		sh, nftIdBytes, bet, err = validateNotaryRequestStartAuction(req, s)
+	case "makeBet":
+		sh, bet, err = validateNotaryRequestMakeBet(req, s)
 	case "finish":
 		err = validateNotaryRequestFinishAuction(req, s)
 	default:

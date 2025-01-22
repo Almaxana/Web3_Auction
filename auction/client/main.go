@@ -142,10 +142,16 @@ func main() {
 				die(makeNotaryRequestStartAuction(backendKey, acc, rpcCli, auctionContractHash, nftId, initBet)) // создание НЗ (оборачивает main tx, которая состоит в вызове метода контракта)
 			case "getNFT":
 				die(makeNotaryRequestGetNft(backendKey, acc, rpcCli, nftContractHash))
+			case "makeBet":
+				betStr := args[1]
+				bet, err := strconv.Atoi(betStr)
+				if err != nil {
+					fmt.Printf("Error converting bet number to integer: %v\n", err)
+					return
+				}
+				die(makeNotaryRequestMakeBet(backendKey, acc, rpcCli, auctionContractHash, bet))
 			case "finishAuction":
 				die(makeNotaryRequestFinishAuction(backendKey, acc, rpcCli, auctionContractHash))
-			case "exit":
-				return
 			default:
 				fmt.Printf("Unknown commandName: %s\n", commandName)
 			}
@@ -358,6 +364,26 @@ func makeNotaryRequestStartAuction(backendKey *keys.PublicKey, acc *wallet.Accou
 	// контракте auction
 	if err != nil {
 		return err
+	}
+
+	_, err = makeNotaryRequestPostProcessing(tx, nAct)
+	if err != nil {
+		return fmt.Errorf("makeNotaryRequestPostProcessing: %w", err)
+	}
+
+	return nil
+}
+
+func makeNotaryRequestMakeBet(backendKey *keys.PublicKey, acc *wallet.Account, rpcCli *rpcclient.Client, contractHash util.Uint160, bet int) error {
+
+	nAct, err := makeNotaryRequestPreProcessing(acc, backendKey, rpcCli)
+	if err != nil {
+		return fmt.Errorf("makeNotaryRequestPreProcessing: %w", err)
+	}
+
+	tx, err := nAct.MakeTunedCall(contractHash, "makeBet", nil, nil, acc.ScriptHash(), bet)
+	if err != nil {
+		return fmt.Errorf("failed to create transaction for makeBet: %w", err)
 	}
 
 	_, err = makeNotaryRequestPostProcessing(tx, nAct)
