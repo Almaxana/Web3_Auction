@@ -64,7 +64,7 @@ func Start(auctionOwner interop.Hash160, lotId []byte, initBet int) {
 	nftContractHashString := nftContractHashStringArray[0]
 	ownerOfLot := contract.Call(address.ToHash160(nftContractHashString), "ownerOf", contract.All, lotId).(interop.Hash160)
 	if !ownerOfLot.Equals(auctionOwner) {
-		panic("you can't start auction with lot " + string(lotId) + " because you're not its owner")
+		panic("you can't start auction with this lot because you're not its owner")
 	}
 
 	storage.Put(ctx, organizerKey, auctionOwner)
@@ -72,7 +72,7 @@ func Start(auctionOwner interop.Hash160, lotId []byte, initBet int) {
 	storage.Put(ctx, initBetKey, initBet)
 	storage.Put(ctx, currentBetKey, initBet)
 
-	runtime.Notify("info", []byte("New auction started with initial bet = "+intToStr(initBet)))
+	runtime.Notify("info", []byte("New auction started with initial bet = "+intToStr(initBet)+" by user "+address.FromHash160(auctionOwner)))
 }
 
 func intToStr(value int) string {

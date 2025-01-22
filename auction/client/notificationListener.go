@@ -90,7 +90,7 @@ func ListenNotifications(ctx context.Context, url string, contractToListen strin
 				continue
 			}
 			decodedString := string(decodedBytes)
-			fmt.Print("\nNOTIFICATION:", decodedString, "\n")
+			fmt.Print("\nNOTIFICATION:", decodedString, "\n\n")
 		}
 	}
 }
