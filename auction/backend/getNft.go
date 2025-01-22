@@ -59,13 +59,16 @@ func validateNotaryRequestGetNft(req *payload.P2PNotaryRequest) (util.Uint160, s
 	// retrieve contract's script hash
 	contractHash, err := util.Uint160DecodeBytesBE(ops[opsLen-2].param) // вызываемый контракт - 2ая с конца инструкция
 	if err != nil {
-		return util.Uint160{}, "", err
+		return util.Uint160{}, "", fmt.Errorf("%s", contractHash)
 	}
 
-	contractHashExpected, err := util.Uint160DecodeStringLE("77a7c4e6f9307e5ce55136daa92ce5cb4621f8be") // вызываемый контракт
+	contractHashExpected, err := util.Uint160DecodeStringLE("29a854a7741b84160c46172c8121de11486533a3") // вызываемый контракт
 	if err != nil {
-		return util.Uint160{}, "", err
+		return util.Uint160{}, "", fmt.Errorf("%s", contractHashExpected)
 	}
+
+	fmt.Print(contractHash)
+	fmt.Print(contractHashExpected)
 
 	if !contractHash.Equals(contractHashExpected) {
 		return util.Uint160{}, "", fmt.Errorf("unexpected contract hash: %s", contractHash)
