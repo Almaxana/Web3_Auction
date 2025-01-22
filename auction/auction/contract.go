@@ -87,24 +87,6 @@ func GetPotentialWinner() interop.Hash160 {
 	return data.(interop.Hash160)
 }
 
-///func MakeBet(better interop.Hash160, bet int) {
-///	ctx := storage.GetContext()
-
-///	currentBet := storage.Get(ctx, currentBetKey).(int)
-///	auctionOwner := storage.Get(ctx, ownerKey).(interop.Hash160)
-
-///	if bet <= currentBet {
-///		panic("bet must be higher than the current bet")
-///	}
-
-///	if better.Equals(auctionOwner) {
-///		panic("auction owner cannot make bet")
-///	}
-
-///	storage.Put(ctx, currentBetKey, bet) // update bet
-///	storage.Put(ctx, potentialWinnerKey, better)
-///}
-
 func MakeBet(better interop.Hash160, bet int) {
 	ctx := storage.GetContext()
 
@@ -124,6 +106,10 @@ func MakeBet(better interop.Hash160, bet int) {
 
 	if better.Equals(auctionOwner) {
 		panic("auction owner cannot make bet")
+	}
+
+	if auctionOwner == nil {
+		panic("auction has not started")
 	}
 
 	storage.Put(ctx, currentBetKey, bet)
