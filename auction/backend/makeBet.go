@@ -62,3 +62,7 @@ func validateNotaryRequestMakeBet(req *payload.P2PNotaryRequest, s *Server) (uti
 
 	return scriptHash, bet, err
 }
+
+func (s *Server) checkNotaryRequestMakeBet(nAct *notary.Actor, better util.Uint160, bet int) (bool, error) {
+	return true, nil
+}

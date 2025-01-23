@@ -53,3 +53,7 @@ func validateNotaryRequestFinishAuction(req *payload.P2PNotaryRequest, s *Server
 
 	return nil
 }
+
+func (s *Server) checkNotaryRequestFinishAuction(nAct *notary.Actor, finisher util.Uint160) (bool, error) {
+	return true, nil
+}

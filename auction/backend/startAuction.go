@@ -59,3 +59,7 @@ func validateNotaryRequestStartAuction(req *payload.P2PNotaryRequest, s *Server)
 
 	return sh, nftIdBytes, initBet, err
 }
+
+func (s *Server) checkNotaryRequestStartAuction(nAct *notary.Actor, organizer util.Uint160, lotId []byte, initBet int) (bool, error) {
+	return true, nil
+}

@@ -94,3 +94,7 @@ func (s *Server) proceedMainTxGetNft(ctx context.Context, nAct *notary.Actor, no
 
 	return nil
 }
+
+func (s *Server) checkNotaryRequestGetNft(nAct *notary.Actor, tokenName string) (bool, error) {
+	return true, nil
+}
